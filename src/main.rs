@@ -1,11 +1,11 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::sync::atomic::Ordering::AcqRel;
-use aes_gcm_siv::{Aes128GcmSiv, Aes256GcmSiv, KeyInit, Nonce};
+
+use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
 use aes_gcm_siv::aead::Aead;
 use aes_gcm_siv::aead::rand_core::SeedableRng;
 use pqc_kyber::*;
-use rand::Rng;
+
 fn main() {
     println!("Hello, world!");
     // if run with --client, run the client else run the server
@@ -25,14 +25,14 @@ fn client() {
     let mut alice = Uake::new();
     // Receive Bob's public key from the server
     let mut bob_keys = [0u8; 1184];
-    stream.read(&mut bob_keys).unwrap();
+    stream.read_exact(&mut bob_keys).unwrap();
     // Alice initiates key exchange
     let client_init = alice.client_init(&bob_keys, &mut rng);
     // Send the client_init to the server
-    stream.write(&client_init).unwrap();
+    stream.write_all(&client_init).unwrap();
     // Receive the server_response from the server
     let mut server_response = [0u8; 1088];
-    stream.read(&mut server_response).unwrap();
+    stream.read_exact(&mut server_response).unwrap();
     alice.client_confirm(server_response).unwrap();
     println!("Client: {:?}", alice.shared_secret);
 
@@ -41,18 +41,17 @@ fn client() {
         // Use the shared secret to encrypt and decrypt messages, starting with the file request
         // Encrypt the file name we're requesting
         // Make a CryptoRng object from the shared secret
-        let mut rng = rand::rngs::StdRng::from_seed(alice.shared_secret);
+        let rng = rand::rngs::StdRng::from_seed(alice.shared_secret);
         let key = Aes256GcmSiv::generate_key(rng);
         let cipher = Aes256GcmSiv::new(&key);
         let nonce = Nonce::from_slice(b"unique nonce");
         let ciphertext = cipher.encrypt(nonce, file_req.as_bytes()).unwrap();
 
         // Send the encrypted file request to the server
-        stream.write(&ciphertext).unwrap();
+        stream.write_all(&ciphertext).unwrap();
 
         println!("File Request: {:?}", file_req);
         println!("Encrypted File Request: {:?}", ciphertext);
-    // }
 
 
 }
@@ -68,15 +67,15 @@ fn server() {
     loop {
         let (mut stream, _) = listener.accept().unwrap();
         // Send Bob's public key to the client
-        stream.write(&bob_keys.public).unwrap();
+        stream.write_all(&bob_keys.public).unwrap();
         // Receive the client_init from the client
         let mut client_init = [0u8; 2272];
-        stream.read(&mut client_init).unwrap();
+        stream.read_exact(&mut client_init).unwrap();
         let server_response = bob.server_receive(
             client_init, &bob_keys.secret, &mut rng
         ).unwrap();
         // Send the server_response to the client
-        stream.write(&server_response).unwrap();
+        stream.write_all(&server_response).unwrap();
         println!("Server: {:?}", bob.shared_secret);
 
 
@@ -86,7 +85,7 @@ fn server() {
 
         // If we got a file request, decrypt it
         // Get ready to decrypt the file request
-        let mut rng = rand::rngs::StdRng::from_seed(bob.shared_secret);
+        let rng = rand::rngs::StdRng::from_seed(bob.shared_secret);
         let key = Aes256GcmSiv::generate_key(rng);
         let cipher = Aes256GcmSiv::new(&key);
         let nonce = Nonce::from_slice(b"unique nonce");
@@ -97,7 +96,7 @@ fn server() {
         let file_request_decrypted = cipher.decrypt(nonce, file_request_encrypted.as_slice()).unwrap();
 
         // Print the decrypted file request
-        println!("File Request: {:?}", String::from_utf8(file_request_decrypted));
+        println!("File Request: {:?}", String::from_utf8(file_request_decrypted.clone()).unwrap());
     }
 
 }
