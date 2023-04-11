@@ -7,7 +7,6 @@ use aes_gcm_siv::aead::rand_core::SeedableRng;
 use pqc_kyber::*;
 
 fn main() {
-    println!("Hello, world!");
     // if run with --client, run the client else run the server
     if std::env::args().nth(1) == Some("--client".to_string()) {
         client();
@@ -20,7 +19,7 @@ fn main() {
 }
 
 fn client() {
-    println!("Running client");
+    println!("\nRunning client");
     let mut rng = rand::thread_rng();
     let mut stream = TcpStream::connect("127.0.0.1:1332").unwrap();
     let mut client = Uake::new();
@@ -35,7 +34,7 @@ fn client() {
     let mut server_response = [0u8; 1088];
     stream.read_exact(&mut server_response).unwrap();
     client.client_confirm(server_response).unwrap();
-    println!("Client: {:?}", client.shared_secret);
+    println!("Established Shared Secret");
 
     // if let Some(file_req) = std::env::args().nth(2){
     let file_req = "message.txt";
@@ -48,26 +47,33 @@ fn client() {
     let nonce = Nonce::from_slice(b"unique nonce");
     let ciphertext = cipher.encrypt(nonce, file_req.as_bytes()).unwrap();
 
-    // Send the encrypted file request to the server
-    println!("File Request: {:?} Written", file_req);
+    // Send the encrypted file request to the server, prefixed with the length, with the length number padded to 8 bytes
+    let file_req_len = ciphertext.len();
+    let file_req_buf = file_req_len.to_be_bytes();
+
+    println!("File Request Length: {:?}", file_req_len);
+    let mut file_req_buf_padded = [0u8; 8];
+    file_req_buf_padded[8 - file_req_buf.len()..].copy_from_slice(&file_req_buf);
+    stream.write_all(&file_req_buf_padded).unwrap();
+
+    println!("File Request: {:?}", file_req);
     stream.write_all(&ciphertext).unwrap();
 
 
-    // println!("Encrypted File Request: {:?}", ciphertext);
-
     // Receive the encrypted file contents from the server
-    println!("Going to read to end");
-    let mut file_contents_encrypted: Vec<u8> = Vec::new();
-    stream.read_to_end(&mut file_contents_encrypted).unwrap();
+    // Receive the length of the file contents
+    let mut file_contents_len_buf = [0u8; 8];
+    stream.read_exact(&mut file_contents_len_buf).unwrap();
+    let file_contents_len = u64::from_be_bytes(file_contents_len_buf);
+    let mut file_contents_encrypted: Vec<u8> = vec![0; file_contents_len as usize];
+    stream.read_exact(&mut file_contents_encrypted).unwrap();
 
     // Decrypt the file contents
     let file_contents_decrypted = cipher.decrypt(nonce, file_contents_encrypted.as_slice()).unwrap();
 
     // Print the decrypted file contents
-    println!("Decrypted File Contents: {:?}", String::from_utf8(file_contents_decrypted).unwrap());
+    println!("Decrypted File Contents: {:?}\n", String::from_utf8(file_contents_decrypted).unwrap());
 
-    // // print the encrypted file contents
-    // println!("Encrypted File Contents: {:?}", file_contents_encrypted);
 }
 
 fn server() {
@@ -78,10 +84,11 @@ fn server() {
     let server_keys = keypair(&mut rng);
     // Check if the ip is in use and ok to start
     // Host the server for the client to connect to
+    // let listener = std::net::TcpListener::bind("127.0.0.1:1332").unwrap();
     let listener = std::net::TcpListener::bind("127.0.0.1:1332").unwrap();
     loop {
         let (mut stream, _) = listener.accept().unwrap();
-        println!("\nConnection established!");
+        println!("\n\x1b[92mConnection established!\x1b[0m");
         // Send Server's public key to the client
         stream.write_all(&server_keys.public).unwrap();
         // Receive the client_init from the client
@@ -95,9 +102,15 @@ fn server() {
         println!("\x1b[96mEstablished Shared Secret\x1b[0m");
 
         // Receive the encrypted file request from the client
-        let mut file_request_encrypted: Vec<u8> = Vec::new();
-        stream.read_to_end(&mut file_request_encrypted).unwrap();
-        println!("File Request Received");
+        // Receive the length of the file request
+        let mut file_req_len_buf = [0u8; 8];
+        stream.read_exact(&mut file_req_len_buf).unwrap();
+        let file_req_len = u64::from_be_bytes(file_req_len_buf);
+        // println!("File Request Length: {:?}", file_req_len);
+
+        let mut file_request_encrypted: Vec<u8> = vec![0; file_req_len as usize];
+        file_request_encrypted.resize(file_req_len as usize, 0); stream.read_exact(&mut file_request_encrypted).unwrap();
+        // println!("File Request Received: {:?}", file_request_encrypted);
 
         // If we got a file request, decrypt it
         // Get ready to decrypt the file request
@@ -120,7 +133,13 @@ fn server() {
         // Encrypt the file contents
         let file_contents_encrypted = cipher.encrypt(nonce, file_contents.as_slice()).unwrap();
 
-        // Send the encrypted file contents to the client
+        // Send the encrypted file contents to the client, prefixed with the length, with the length number padded to 8 bytes
+        println!("\x1b[95mSending file contents!\x1b[0m");
+        let file_contents_len = file_contents_encrypted.len();
+        let file_contents_buf = file_contents_len.to_be_bytes();
+        let mut file_contents_buf_padded = [0u8; 8];
+        file_contents_buf_padded[8 - file_contents_buf.len()..].copy_from_slice(&file_contents_buf);
+        stream.write_all(&file_contents_buf_padded).unwrap();
         stream.write_all(&file_contents_encrypted).unwrap();
 
         // Print the encrypted file contents
