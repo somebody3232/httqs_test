@@ -225,8 +225,5 @@ fn server(is_silent: bool, url: String) {
         file_contents_buf_padded[8 - file_contents_buf.len()..].copy_from_slice(&file_contents_buf);
         stream.write_all(&file_contents_buf_padded).unwrap();
         stream.write_all(&file_contents_encrypted).unwrap();
-
-        // Print the encrypted file contents
-        // println!("Encrypted File Contents: {:?}", file_contents_encrypted);
     }
 }
