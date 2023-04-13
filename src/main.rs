@@ -119,7 +119,7 @@ fn client(is_silent: bool, url: String, file_req: String, save_to_file: bool) {
         if !std::path::Path::new("httqs_out").exists() {
             std::fs::create_dir("httqs_out").unwrap();
         }
-        // Scaffold the file path if needed (e.g. if the file is in a subdirectory)
+        // Scaffold the file path if needed (e.g. if the file is in a subdirectory) (ik this is bad, fix later)
         let path = std::path::Path::new(&path);
         if path.parent().is_some() {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
