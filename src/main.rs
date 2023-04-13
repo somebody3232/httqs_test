@@ -1,9 +1,9 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
 
-use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
-use aes_gcm_siv::aead::Aead;
 use aes_gcm_siv::aead::rand_core::SeedableRng;
+use aes_gcm_siv::aead::Aead;
+use aes_gcm_siv::{Aes256GcmSiv, KeyInit, Nonce};
 use pqc_kyber::*;
 
 fn main() {
@@ -42,7 +42,9 @@ fn main() {
 }
 
 fn client(is_silent: bool, url: String, file_req: String, save_to_file: bool) {
-    if !is_silent { println!("\nRunning client"); }
+    if !is_silent {
+        println!("\nRunning client");
+    }
     let mut rng = rand::thread_rng();
     let mut stream = TcpStream::connect(url).unwrap();
     let mut client = Uake::new();
@@ -57,7 +59,9 @@ fn client(is_silent: bool, url: String, file_req: String, save_to_file: bool) {
     let mut server_response = [0u8; 1088];
     stream.read_exact(&mut server_response).unwrap();
     client.client_confirm(server_response).unwrap();
-    if !is_silent { println!("Established Shared Secret"); }
+    if !is_silent {
+        println!("Established Shared Secret");
+    }
 
     // Use the shared secret to encrypt and decrypt messages, starting with the file request
     // Encrypt the file name we're requesting
@@ -72,14 +76,17 @@ fn client(is_silent: bool, url: String, file_req: String, save_to_file: bool) {
     let file_req_len = ciphertext.len();
     let file_req_buf = file_req_len.to_be_bytes();
 
-    if !is_silent { println!("File Request Length: {:?}", file_req_len); }
+    if !is_silent {
+        println!("File Request Length: {:?}", file_req_len);
+    }
     let mut file_req_buf_padded = [0u8; 8];
     file_req_buf_padded[8 - file_req_buf.len()..].copy_from_slice(&file_req_buf);
     stream.write_all(&file_req_buf_padded).unwrap();
 
-    if !is_silent { println!("File Request: {:?}", file_req); }
+    if !is_silent {
+        println!("File Request: {:?}", file_req);
+    }
     stream.write_all(&ciphertext).unwrap();
-
 
     // Receive the encrypted file contents from the server
     // Receive the length of the file contents
@@ -90,21 +97,42 @@ fn client(is_silent: bool, url: String, file_req: String, save_to_file: bool) {
     stream.read_exact(&mut file_contents_encrypted).unwrap();
 
     // Decrypt the file contents
-    let file_contents_decrypted = cipher.decrypt(nonce, file_contents_encrypted.as_slice()).unwrap();
+    let file_contents_decrypted = cipher
+        .decrypt(nonce, file_contents_encrypted.as_slice())
+        .unwrap();
 
     // Print the decrypted file contents
-    if !is_silent { println!("Decrypted File Contents: "); }
-    if !save_to_file || !is_silent { print!("{}\n", String::from_utf8(file_contents_decrypted).unwrap()); }
+    if !is_silent {
+        println!("Decrypted File Contents: ");
+    }
+    if !save_to_file || !is_silent {
+        println!(
+            "{}\n",
+            String::from_utf8(file_contents_decrypted.clone()).unwrap()
+        );
+    }
 
     // Save the file contents to a file
     if save_to_file {
-        let mut file = std::fs::File::create(String::from("httqs_out/") + &*file_req).unwrap();
+        let path = String::from("httqs_out/") + &*file_req;
+        // Create directories if needed
+        if !std::path::Path::new("httqs_out").exists() {
+            std::fs::create_dir("httqs_out").unwrap();
+        }
+        // Scaffold the file path if needed (e.g. if the file is in a subdirectory)
+        let path = std::path::Path::new(&path);
+        if path.parent().is_some() {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        }
+        let mut file = std::fs::File::create(path).unwrap();
         file.write_all(&file_contents_decrypted).unwrap();
     }
 }
 
 fn server(is_silent: bool, url: String) {
-    if !is_silent { println!("Running server on {:?}", url); }
+    if !is_silent {
+        println!("Running server on {:?}", url);
+    }
     let mut rng = rand::thread_rng();
     let mut server = Uake::new();
     // Generate Server's Keypair
@@ -115,18 +143,22 @@ fn server(is_silent: bool, url: String) {
     let listener = std::net::TcpListener::bind(url).unwrap();
     loop {
         let (mut stream, _) = listener.accept().unwrap();
-        if !is_silent { println!("\n\x1b[92mConnection established!\x1b[0m"); }
+        if !is_silent {
+            println!("\n\x1b[92mConnection established!\x1b[0m");
+        }
         // Send Server's public key to the client
         stream.write_all(&server_keys.public).unwrap();
         // Receive the client_init from the client
         let mut client_init = [0u8; 2272];
         stream.read_exact(&mut client_init).unwrap();
-        let server_response = server.server_receive(
-            client_init, &server_keys.secret, &mut rng,
-        ).unwrap();
+        let server_response = server
+            .server_receive(client_init, &server_keys.secret, &mut rng)
+            .unwrap();
         // Send the server_response to the client
         stream.write_all(&server_response).unwrap();
-        if !is_silent { println!("\x1b[96mEstablished Shared Secret\x1b[0m"); }
+        if !is_silent {
+            println!("\x1b[96mEstablished Shared Secret\x1b[0m");
+        }
 
         // Receive the encrypted file request from the client
         // Receive the length of the file request
@@ -148,16 +180,26 @@ fn server(is_silent: bool, url: String) {
         let nonce = Nonce::from_slice(b"unique nonce");
 
         // Decrypt the file request
-        let file_request_decrypted = cipher.decrypt(nonce, file_request_encrypted.as_slice()).unwrap();
+        let file_request_decrypted = cipher
+            .decrypt(nonce, file_request_encrypted.as_slice())
+            .unwrap();
 
         // Print the decrypted file request
-        if !is_silent { println!("\x1b[34mGot File Request {:?}\x1b[0m", String::from_utf8(file_request_decrypted.clone()).unwrap()); }
+        if !is_silent {
+            println!(
+                "\x1b[34mGot File Request {:?}\x1b[0m",
+                String::from_utf8(file_request_decrypted.clone()).unwrap()
+            );
+        }
 
         // Open the file requested
-        let mut path = String::from("public/") + &*String::from_utf8(file_request_decrypted).unwrap();
+        let mut path =
+            String::from("public/") + &*String::from_utf8(file_request_decrypted).unwrap();
         let mut file = std::fs::File::open(path.clone());
         if file.is_err() {
-            if !is_silent { println!("\x1b[31mFile {:?} not found!\x1b[0m", path); }
+            if !is_silent {
+                println!("\x1b[31mFile {:?} not found!\x1b[0m", path);
+            }
             file = std::fs::File::open("public/404.html");
             path = String::from("public/404.html");
         }
@@ -174,7 +216,9 @@ fn server(is_silent: bool, url: String) {
         let file_contents_encrypted = cipher.encrypt(nonce, file_contents.as_slice()).unwrap();
 
         // Send the encrypted file contents to the client, prefixed with the length, with the length number padded to 8 bytes
-        if !is_silent { println!("\x1b[95mSending file contents!\x1b[0m"); }
+        if !is_silent {
+            println!("\x1b[95mSending file contents!\x1b[0m");
+        }
         let file_contents_len = file_contents_encrypted.len();
         let file_contents_buf = file_contents_len.to_be_bytes();
         let mut file_contents_buf_padded = [0u8; 8];
