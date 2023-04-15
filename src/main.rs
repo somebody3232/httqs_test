@@ -133,6 +133,7 @@ fn server(is_silent: bool, url: String) {
     if !is_silent {
         println!("Running server on {:?}", url);
     }
+
     let mut rng = rand::thread_rng();
     let mut server = Uake::new();
     // Generate Server's Keypair
